@@ -78,7 +78,19 @@ void UVolumetricSmokeComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	{
 		DrawDebugVisualization();
 	}
+
+	UpdateVoxelsVisibility(DeltaTime);
 }
+
+void UVolumetricSmokeComponent::UpdateVoxelsVisibility(float DeltaTime)
+{
+	for (FSmokeVoxel& Voxel : SmokeVoxelArray)
+	{
+		const float OldVisibility = Voxel.Visibility;
+		Voxel.Visibility = FMath::FInterpTo(OldVisibility, 1.0, DeltaTime, SmokeSpawnSpeed * Voxel.Density);
+	}
+}
+
 
 void UVolumetricSmokeComponent::RegenerateVoxels()
 {
@@ -89,6 +101,9 @@ void UVolumetricSmokeComponent::RegenerateVoxels()
 	const int32 TotalVoxels = VoxelResolution * VoxelResolution * VoxelResolution;
 	VoxelGrid.SetNum(TotalVoxels);
 	VoxelColors.SetNum(TotalVoxels);
+
+	// Clear the smoke voxel array before regenerating
+	SmokeVoxelArray.Empty();
 
 	// Initialize all voxels to empty
 	for (FSmokeVoxel& Voxel : VoxelGrid)
@@ -158,6 +173,15 @@ void UVolumetricSmokeComponent::GenerateSphereVoxels()
 					// Store voxel
 					const int32 Index = X + Y * VoxelResolution + Z * VoxelResolution * VoxelResolution;
 					VoxelGrid[Index].Density = Density;
+					// Start all voxels with visibility 0 so they all fade in gradually
+					// This prevents edge voxels from appearing instantly
+					VoxelGrid[Index].Visibility = 0.0f;
+					VoxelGrid[Index].LocalPosition = LocalPos;
+
+					// Store Smoke filled Voxels - explicitly ensure visibility is 0
+					FSmokeVoxel SmokeVoxel = VoxelGrid[Index];
+					SmokeVoxel.Visibility = 0.0f; // Explicitly set to 0 to prevent any instant appearance
+					SmokeVoxelArray.Add(SmokeVoxel);
 				}
 			}
 		}
@@ -167,19 +191,19 @@ void UVolumetricSmokeComponent::GenerateSphereVoxels()
 void UVolumetricSmokeComponent::GenerateVoxelColors()
 {
 	// Generate randomized colors for each voxel
-	for (int32 Index = 0; Index < VoxelGrid.Num(); ++Index)
+	for (int32 Index = 0; Index < SmokeVoxelArray.Num(); ++Index)
 	{
-		if (VoxelGrid[Index].Density > 0.0f)
+		if (SmokeVoxelArray[Index].Density > 0.0f)
 		{
 			// Generate random color components
 			const uint8 R = FMath::RandRange(50, 255);
 			const uint8 G = FMath::RandRange(50, 255);
 			const uint8 B = FMath::RandRange(50, 255);
-			VoxelColors[Index] = FColor(R, G, B, 255);
+			SmokeVoxelArray[Index].Colour = FColor(R, G, B, 255);
 		}
 		else
 		{
-			VoxelColors[Index] = FColor::Black;
+			SmokeVoxelArray[Index].Colour = FColor::Black;
 		}
 	}
 }
@@ -231,49 +255,39 @@ void UVolumetricSmokeComponent::DrawDebugVisualization() const
 	{
 		return;
 	}
-
+	
 	const float VoxelSize = (SphereRadius * 2.0f) / VoxelResolution;
-	const float DrawThreshold = 0.1f; // Only draw voxels with density above threshold
-
-	// Draw a sample of voxels (every Nth voxel to avoid performance issues)
-	const int32 SampleRate = FMath::Max(1, VoxelResolution / 16); // Adjust based on resolution
-
-	for (int32 Z = 0; Z < VoxelResolution; Z += SampleRate)
+	for (const FSmokeVoxel& SmokeVoxel : SmokeVoxelArray)
 	{
-		for (int32 Y = 0; Y < VoxelResolution; Y += SampleRate)
+		if (SmokeVoxel.Visibility < 0.5)
 		{
-			for (int32 X = 0; X < VoxelResolution; X += SampleRate)
-			{
-				const int32 Index = X + Y * VoxelResolution + Z * VoxelResolution * VoxelResolution;
-				const FSmokeVoxel& Voxel = VoxelGrid[Index];
-
-				if (Voxel.Density > DrawThreshold)
-				{
-					const FVector WorldPos = VoxelToWorld(FIntVector(X, Y, Z));
-					const FVector BoxExtent = FVector(VoxelSize * 0.5f);
-					
-					// Color intensity based on density
-					const FColor VoxelColor = FColor(
-						DebugColor.R,
-						DebugColor.G,
-						DebugColor.B,
-						FMath::Clamp(FMath::RoundToInt(Voxel.Density * 255.0f), 0, 255)
-					);
-
-					DrawDebugBox(
-						GetWorld(),
-						WorldPos,
-						BoxExtent,
-						GetComponentQuat(),
-						VoxelColor,
-						false,
-						0.0f,
-						0,
-						1.0f
-					);
-				}
-			}
+			continue;
 		}
+
+		const FVector LocalPos = SmokeVoxel.LocalPosition;
+		const FVector WorldPos = GetComponentTransform().TransformPosition(LocalPos);
+		;
+		const FVector BoxExtent = FVector(VoxelSize * 0.5f);
+					
+		// Color intensity based on density
+		const FColor VoxelColor = FColor(
+			DebugColor.R,
+			DebugColor.G,
+			DebugColor.B,
+			FMath::Clamp(FMath::RoundToInt(SmokeVoxel.Density * 255.0f), 0, 255)
+		);
+
+		DrawDebugBox(
+			GetWorld(),
+			WorldPos,
+			BoxExtent,
+			GetComponentQuat(),
+			VoxelColor,
+			false,
+			0.0f,
+			0,
+			1.0f
+		);
 	}
 }
 
@@ -306,7 +320,7 @@ void UVolumetricSmokeComponent::GetUsedMaterials(TArray<UMaterialInterface*>& Ou
 // FVolumetricSmokeSceneProxy Implementation
 // ============================================================================
 
-FVolumetricSmokeSceneProxy::FVolumetricSmokeSceneProxy(const UVolumetricSmokeComponent* InComponent)
+FVolumetricSmokeSceneProxy::FVolumetricSmokeSceneProxy(UVolumetricSmokeComponent* InComponent)
 	: FPrimitiveSceneProxy(InComponent)
 	, VoxelSize(0.0f)
 	, VoxelResolution(0)
@@ -317,66 +331,41 @@ FVolumetricSmokeSceneProxy::FVolumetricSmokeSceneProxy(const UVolumetricSmokeCom
 	VoxelResolution = InComponent->VoxelResolution;
 	SphereRadius = InComponent->SphereRadius;
 	CachedVoxelDataVersion = InComponent->VoxelDataVersion;
+	SmokeComp = InComponent;
 	
-	// Safety check: ensure we have valid data
-	if (VoxelResolution <= 0 || SphereRadius <= 0.0f)
+	// Calculate voxel size (critical - without this, cubes have zero size!)
+	if (VoxelResolution > 0)
 	{
-		return;
+		VoxelSize = (SphereRadius * 2.0f) / VoxelResolution;
 	}
-	
-	// Safety check: ensure arrays are properly sized
-	const int32 TotalVoxels = VoxelResolution * VoxelResolution * VoxelResolution;
-	if (InComponent->VoxelGrid.Num() != TotalVoxels || InComponent->VoxelColors.Num() != TotalVoxels)
+	else
 	{
-		return;
+		VoxelSize = 0.0f;
 	}
-	
-	VoxelSize = (SphereRadius * 2.0f) / VoxelResolution;
-	
-	const FVector Offset = FVector(SphereRadius);
-	const float DensityThreshold = 0.01f;
-	
-	// Collect all non-empty voxels with their positions and colors
-	for (int32 Z = 0; Z < VoxelResolution; ++Z)
-	{
-		for (int32 Y = 0; Y < VoxelResolution; ++Y)
-		{
-			for (int32 X = 0; X < VoxelResolution; ++X)
-			{
-				const int32 Index = X + Y * VoxelResolution + Z * VoxelResolution * VoxelResolution;
-				
-				// Bounds check before accessing
-				if (Index >= 0 && Index < InComponent->VoxelGrid.Num() && Index < InComponent->VoxelColors.Num())
-				{
-					if (InComponent->VoxelGrid[Index].Density > DensityThreshold)
-					{
-						// Calculate local position
-						const FVector LocalPos = FVector(X, Y, Z) * VoxelSize - Offset;
-						VoxelPositions.Add(LocalPos);
-						VoxelColors.Add(InComponent->VoxelColors[Index]);
-					}
-				}
-			}
-		}
-	}
-	
-	UE_LOG(LogTemp, Log, TEXT("VolumetricSmoke SceneProxy: Collected %d voxels for rendering"), VoxelPositions.Num());
 	
 	bWillEverBeLit = true;
 }
 
 void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector) const
 {
+
 	// NOTE: This is called every frame, but it's efficient because:
 	// 1. Voxel data (positions/colors) is cached in the scene proxy (copied once when proxy is created)
 	// 2. We only rebuild the mesh geometry here, not the voxel data
 	// 3. For smoke grenade: voxels are generated ONCE on explosion, mesh is built from cached data each frame
-	
-	// Early return if no voxels to render
-	if (VoxelPositions.Num() == 0 || VoxelPositions.Num() != VoxelColors.Num())
+	if (IsValid(SmokeComp) == false)
 	{
 		return;
 	}
+
+	TArray<FSmokeVoxel>& SmokeVoxelArray = SmokeComp->SmokeVoxelArray;
+	
+	// Early return if no voxels to render
+	if (SmokeVoxelArray.Num() == 0)
+	{
+		return;
+	}
+	
 	
 	// Use surface material (default material supports vertex colors)
 	UMaterialInterface* Material = UMaterial::GetDefaultMaterial(MD_Surface);
@@ -393,16 +382,21 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 	const FMaterialRenderProxy* MaterialRenderProxy = Material->GetRenderProxy();
 	
 	// Generate cube geometry for each voxel - all added to the same mesh builder
-	for (int32 VoxelIndex = 0; VoxelIndex < VoxelPositions.Num(); ++VoxelIndex)
+	for (int32 VoxelIndex = 0; VoxelIndex < SmokeVoxelArray.Num(); ++VoxelIndex)
 	{
 		// Bounds check
-		if (VoxelIndex >= VoxelPositions.Num() || VoxelIndex >= VoxelColors.Num())
+		if (VoxelIndex >= SmokeVoxelArray.Num())
 		{
 			continue;
 		}
 		
-		const FVector& VoxelPos = VoxelPositions[VoxelIndex];
-		const FColor& VoxelColor = VoxelColors[VoxelIndex];
+		if (SmokeVoxelArray[VoxelIndex].Visibility < 0.5)
+		{
+			continue;
+		}
+		
+		const FVector& VoxelPos = SmokeVoxelArray[VoxelIndex].LocalPosition;
+		const FColor& VoxelColor = SmokeVoxelArray[VoxelIndex].Colour;
 		
 		// Define cube vertices (8 corners) - use FVector3f for mesh vertices
 		const FVector3f CubeExtent(HalfVoxelSize);

@@ -22,6 +22,15 @@ struct FSmokeVoxel
 	// Density value (0.0 = empty, 1.0 = fully dense)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float Density = 0.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float Visibility = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector LocalPosition;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FColor Colour;
 
 	FSmokeVoxel()
 		: Density(0.0f)
@@ -59,15 +68,19 @@ public:
 
 	/** Radius of the sphere in world units */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel Settings", meta = (ClampMin = "10.0", ClampMax = "1000.0"))
-	float SphereRadius = 100.0f;
+	float SphereRadius = 500.0f;
 
 	/** Resolution of the voxel grid (voxels per axis) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel Settings", meta = (ClampMin = "8", ClampMax = "128"))
-	int32 VoxelResolution = 32;
+	int32 VoxelResolution = 16;
+
+	/** Resolution of the voxel grid (voxels per axis) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Smoke Settings")
+	float SmokeSpawnSpeed = 1.0f;
 
 	/** Whether to show debug visualization of voxels */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
-	bool bShowDebugVisualization = true;
+	bool bShowDebugVisualization = false;
 
 	/** Color for debug visualization */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
@@ -90,6 +103,9 @@ public:
 	int32 GetVoxelCount() const { return VoxelGrid.Num(); }
 
 protected:
+
+	void UpdateVoxelsVisibility(float DeltaTime);
+	
 	/** Generate voxels in a sphere shape */
 	void GenerateSphereVoxels();
 
@@ -125,6 +141,9 @@ private:
 	// Version number to track when voxels change (increments when voxels are regenerated)
 	uint32 VoxelDataVersion = 0;
 	
+	// Array of voxels that will be filled with smoke
+	TArray<FSmokeVoxel> SmokeVoxelArray;
+	
 	// Friend class for scene proxy access
 	friend class FVolumetricSmokeSceneProxy;
 };
@@ -141,7 +160,7 @@ public:
 		return reinterpret_cast<size_t>(&UniquePointer);
 	}
 
-	FVolumetricSmokeSceneProxy(const UVolumetricSmokeComponent* InComponent);
+	FVolumetricSmokeSceneProxy(UVolumetricSmokeComponent* InComponent);
 	
 	virtual void GetDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector) const override;
 	virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* View) const override;
@@ -149,9 +168,11 @@ public:
 	uint32 GetAllocatedSize(void) const { return (uint32)FPrimitiveSceneProxy::GetAllocatedSize(); }
 
 private:
+
+	UVolumetricSmokeComponent* SmokeComp;
 	// Voxel data (cached from component when scene proxy is created)
-	TArray<FVector> VoxelPositions;
-	TArray<FColor> VoxelColors;
+	//TArray<FVector> VoxelPositions;
+	//TArray<FColor> VoxelColors;
 	float VoxelSize;
 	int32 VoxelResolution;
 	float SphereRadius;
