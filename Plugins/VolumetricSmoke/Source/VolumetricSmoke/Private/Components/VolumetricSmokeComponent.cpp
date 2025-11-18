@@ -11,6 +11,10 @@
 #include "MeshMaterialShader.h"
 #include "MeshPassProcessor.h"
 
+#include "CollisionQueryParams.h"
+#include "CollisionShape.h"
+#include "Engine/OverlapResult.h" 
+
 UVolumetricSmokeComponent::UVolumetricSmokeComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, SphereRadius(100.0f)
@@ -81,7 +85,7 @@ void UVolumetricSmokeComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	// Draw debug visualization
 	if (bShowDebugVisualization)
 	{
-		DrawDebugVisualization();
+		//DrawDebugVisualization();
 	}
 
 	UpdateVoxelsVisibility(DeltaTime);
@@ -155,6 +159,12 @@ void UVolumetricSmokeComponent::GenerateSphereVoxels()
 	const FVector SphereCenter = FVector::ZeroVector; // Local space center
 	const FVector Offset = FVector(SphereRadius); // Offset to center the grid
 
+
+	if (bShowDebugVisualization)
+	{
+		DrawDebugSphere(GetWorld(),GetComponentTransform().TransformPosition(SphereCenter), SphereRadius, 12, FColor::Green, false, 5.0f , 0, 1.0f);
+	}
+
 	// Iterate through all voxel positions
 	for (int32 Z = 0; Z < VoxelResolution; ++Z)
 	{
@@ -164,12 +174,26 @@ void UVolumetricSmokeComponent::GenerateSphereVoxels()
 			{
 				// Convert voxel coordinates to local space position directly
 				const FVector LocalPos = FVector(X, Y, Z) * VoxelSize - Offset;
+
+				const FVector WorldPos = GetComponentTransform().TransformPosition(LocalPos);
 				
 				// Check if position is inside sphere
 				const float DistanceSquared = FVector::DistSquared(LocalPos, SphereCenter);
 				
 				if (DistanceSquared <= SphereRadiusSquared)
 				{
+
+
+
+					if (IsVoxelNearStaticMesh(GetWorld(), WorldPos, VoxelSize))
+					{
+						if (bShowDebugVisualization)
+						{
+							DrawDebugBox(GetWorld(),WorldPos, FVector(VoxelSize * 0.5f), GetComponentQuat(), FColor::Red, false, 5.0f , 0, 5.0f);
+						}
+						continue;
+					}
+					
 					// Calculate density based on distance from center (1.0 at center, 0.0 at edge)
 					const float Distance = FMath::Sqrt(DistanceSquared);
 					const float NormalizedDistance = Distance / SphereRadius;
@@ -191,6 +215,20 @@ void UVolumetricSmokeComponent::GenerateSphereVoxels()
 			}
 		}
 	}
+}
+
+bool UVolumetricSmokeComponent::IsVoxelNearStaticMesh(UWorld* World, const FVector& VoxelPos, float Radius)
+{
+	TArray<FOverlapResult> OverlapResults;
+	FCollisionObjectQueryParams ObjectTypes(ECollisionChannel::ECC_WorldStatic);
+	FCollisionQueryParams Params;
+	Params.bTraceComplex = true;
+ 
+	bool bOverlap = World->OverlapMultiByChannel(
+		OverlapResults, VoxelPos, FQuat::Identity,
+		ECC_Visibility, FCollisionShape::MakeSphere(Radius), Params);
+ 
+	return bOverlap;
 }
 
 void UVolumetricSmokeComponent::GenerateVoxelColors()

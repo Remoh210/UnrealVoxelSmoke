@@ -116,6 +116,8 @@ protected:
 	
 	/** Generate voxels in a sphere shape */
 	void GenerateSphereVoxels();
+	
+	bool IsVoxelNearStaticMesh(UWorld* World, const FVector& VoxelPos, float Radius);
 
 	/** Generate randomized colors for each voxel */
 	void GenerateVoxelColors();
