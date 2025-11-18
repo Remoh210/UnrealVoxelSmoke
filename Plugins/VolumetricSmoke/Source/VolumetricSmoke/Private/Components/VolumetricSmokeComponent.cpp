@@ -60,6 +60,11 @@ void UVolumetricSmokeComponent::PostEditChangeProperty(FPropertyChangedEvent& Pr
 		{
 			RegenerateVoxels();
 		}
+		else if (PropertyName == GET_MEMBER_NAME_CHECKED(UVolumetricSmokeComponent, SmokeMaterial))
+		{
+			// Material changed - update render state
+			MarkRenderStateDirty();
+		}
 	}
 }
 
@@ -312,7 +317,10 @@ FBoxSphereBounds UVolumetricSmokeComponent::GetLocalBounds() const
 
 void UVolumetricSmokeComponent::GetUsedMaterials(TArray<UMaterialInterface*>& OutMaterials, bool bGetDebugMaterials) const
 {
-	// No materials yet - will be added when we implement rendering
+	if (SmokeMaterial)
+	{
+		OutMaterials.Add(SmokeMaterial);
+	}
 	Super::GetUsedMaterials(OutMaterials, bGetDebugMaterials);
 }
 
@@ -367,12 +375,22 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 	}
 	
 	
-	// Use surface material (default material supports vertex colors)
-	UMaterialInterface* Material = UMaterial::GetDefaultMaterial(MD_Surface);
+	// Use assigned smoke material, or fall back to default material
+	UMaterialInterface* Material = SmokeComp->SmokeMaterial;
 	if (!Material)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("VolumetricSmoke: No material assigned, using default material"));
+		Material = UMaterial::GetDefaultMaterial(MD_Surface);
+	}
+	if (!Material)
+	{
+		UE_LOG(LogTemp, Error, TEXT("VolumetricSmoke: Failed to get material"));
 		return;
 	}
+	
+	// Debug: Log material info
+	UE_LOG(LogTemp, Log, TEXT("VolumetricSmoke: Rendering %d voxels with material %s"), 
+		SmokeVoxelArray.Num(), *Material->GetName());
 	
 	const float HalfVoxelSize = VoxelSize * 0.5f;
 	
@@ -396,7 +414,17 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 		}
 		
 		const FVector& VoxelPos = SmokeVoxelArray[VoxelIndex].LocalPosition;
-		const FColor& VoxelColor = SmokeVoxelArray[VoxelIndex].Colour;
+		
+		// Calculate vertex color based on density and visibility for proper smoke appearance
+		// Use density to control opacity/intensity, visibility for fade-in effect
+		const float Density = SmokeVoxelArray[VoxelIndex].Density;
+		const float Visibility = SmokeVoxelArray[VoxelIndex].Visibility;
+		const float FinalAlpha = FMath::Clamp(Density, 0.0f, 1.0f);
+		
+		// Use a smoke-like color (grayish white) with density-based variation
+		// You can adjust these values or use the stored Colour if preferred
+		const uint8 Intensity = 255 * Density;
+		const FColor VoxelColor = FColor(Intensity, Intensity, Intensity, Intensity);
 		
 		// Define cube vertices (8 corners) - use FVector3f for mesh vertices
 		const FVector3f CubeExtent(HalfVoxelSize);
@@ -513,6 +541,8 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 	}
 	
 	// Build the single batched mesh for each view (much more efficient - one draw call instead of hundreds!)
+	// Use SDPG_World for translucent rendering - bOpaque = false in view relevance handles translucency
+	// IMPORTANT: Your material must have Vertex Color node connected to Base Color and Opacity inputs
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		if (VisibilityMap & (1 << ViewIndex))
@@ -520,7 +550,7 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 			MeshBuilder.GetMesh(
 				GetLocalToWorld(), // Use component's transform
 				MaterialRenderProxy,
-				SDPG_World, // Depth priority group
+				SDPG_World, // Depth priority group - translucency handled by bOpaque = false
 				false,      // bDisableBackfaceCulling
 				false,      // bReceivesDecals
 				ViewIndex,
@@ -532,14 +562,20 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 
 FPrimitiveViewRelevance FVolumetricSmokeSceneProxy::GetViewRelevance(const FSceneView* View) const
 {
+
 	FPrimitiveViewRelevance Result;
 	Result.bDrawRelevance = IsShown(View);
-	Result.bShadowRelevance = IsShadowCast(View);
 	Result.bDynamicRelevance = true;
-	Result.bRenderInMainPass = ShouldRenderInMainPass();
-	Result.bUsesLightingChannels = GetLightingChannelMask() != 0;
+	Result.bSeparateTranslucency = true;
+	Result.bNormalTranslucency = true;
+	Result.bRenderInMainPass = true;
+	Result.bUsesLightingChannels = GetLightingChannelMask() != GetDefaultLightingChannelMask();
+	Result.bTranslucentSelfShadow = true;
+	Result.bShadowRelevance = IsShadowCast(View);
 	Result.bRenderCustomDepth = ShouldRenderCustomDepth();
-	Result.bOpaque = true; // Make sure it's treated as opaque
+	
+	// Smoke is always translucent
+	Result.bOpaque = false;
 	Result.bMasked = false;
 	return Result;
 }

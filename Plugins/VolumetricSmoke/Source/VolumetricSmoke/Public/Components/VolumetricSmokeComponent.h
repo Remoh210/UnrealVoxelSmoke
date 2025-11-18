@@ -6,6 +6,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "PrimitiveSceneProxy.h"
 #include "PrimitiveViewRelevance.h"
+#include "Materials/MaterialInterface.h"
 #include "VolumetricSmokeComponent.generated.h"
 
 // Forward declarations
@@ -78,6 +79,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Smoke Settings")
 	float SmokeSpawnSpeed = 1.0f;
 
+	/** Material to use for rendering smoke voxels. 
+	 * The material will be rendered as translucent regardless of its blend mode setting.
+	 * Make sure to connect the Opacity input in your material (use Vertex Color Alpha for per-voxel opacity).
+	 * Any blend mode will work - the component forces translucent rendering. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Smoke Settings")
+	TObjectPtr<UMaterialInterface> SmokeMaterial = nullptr;
+
 	/** Whether to show debug visualization of voxels */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
 	bool bShowDebugVisualization = false;
@@ -131,7 +139,7 @@ private:
 	// 3D voxel grid stored as 1D array: index = X + Y * Resolution + Z * Resolution * Resolution
 	TArray<FSmokeVoxel> VoxelGrid;
 
-	// Cached values
+	// Cached values 
 	int32 CurrentResolution = 0;
 	float CurrentSphereRadius = 0.0f;
 	
@@ -166,6 +174,8 @@ public:
 	virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* View) const override;
 	virtual uint32 GetMemoryFootprint(void) const override { return sizeof(*this) + GetAllocatedSize(); }
 	uint32 GetAllocatedSize(void) const { return (uint32)FPrimitiveSceneProxy::GetAllocatedSize(); }
+	
+
 
 private:
 
