@@ -5,9 +5,12 @@
 #include "CoreMinimal.h"
 #include "Subsystems/EngineSubsystem.h"
 #include "Rendering/CustomSceneViewExtension.h"
+#include "Components/VoxelizeSpaceComponent.h"
 #include "CustomShaderSubsystem.generated.h"
 
 // Forward declarations
+
+
 
 /**
  * 
@@ -18,6 +21,8 @@ class VOLUMETRICSMOKE_API UCustomShaderSubsystem : public UEngineSubsystem
 	GENERATED_BODY()
 
 public:
+
+	void AddVoxelizationPass(FRDGBuilder& GraphBuilder, FVoxelVolumeEntry& Entry);
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 

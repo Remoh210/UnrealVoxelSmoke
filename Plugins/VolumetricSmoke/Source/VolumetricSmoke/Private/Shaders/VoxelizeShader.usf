@@ -1,0 +1,51 @@
+// VoxelizeSmoke.usf
+// Compute shader for voxelizing smoke into a 3D voxel grid
+
+// Include common UE shader definitions
+#include "/Engine/Private/Common.ush"
+
+// UAV (writable 3D texture)
+RWTexture3D<float> VoxelGridOut : register(u0);
+
+// Shader parameters
+cbuffer Parameters
+{
+	float3 BoundsMin;
+	float3 BoundsMax;
+	float4x4 WorldToLocal;
+};
+
+// Thread group size must match ModifyCompilationEnvironment
+[numthreads(8,8,8)]
+void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+	// Get the dimensions of the voxel grid
+	uint3 Dim;
+	VoxelGridOut.GetDimensions(Dim.x, Dim.y, Dim.z);
+
+	// Make sure we are inside bounds
+	if (DispatchThreadID.x >= Dim.x || DispatchThreadID.y >= Dim.y || DispatchThreadID.z >= Dim.z)
+		return;
+
+	// Convert voxel coordinate to normalized UVW [0..1]
+	float3 uvw = float3(
+		DispatchThreadID.x / (float)Dim.x,
+		DispatchThreadID.y / (float)Dim.y,
+		DispatchThreadID.z / (float)Dim.z
+	);
+
+	// Map UVW to world space position
+	float3 worldPos = lerp(BoundsMin, BoundsMax, uvw);
+
+	// Optional: transform into local space of actor
+	float4 localPos4 = mul(float4(worldPos, 1.0), WorldToLocal);
+	float3 localPos = localPos4.xyz;
+
+	// Example procedural density: sphere in center
+	float3 center = (BoundsMin + BoundsMax) * 0.5;
+	float dist = length(worldPos - center);
+	float density = saturate(1.0 - dist / 50.0); // radius 50 units
+
+	// Write density to voxel grid
+	VoxelGridOut[DispatchThreadID] = density;
+}
