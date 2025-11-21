@@ -427,8 +427,8 @@ void FVolumetricSmokeSceneProxy::GetDynamicMeshElements(const TArray<const FScen
 	}
 	
 	// Debug: Log material info
-	UE_LOG(LogTemp, Log, TEXT("VolumetricSmoke: Rendering %d voxels with material %s"), 
-		SmokeVoxelArray.Num(), *Material->GetName());
+	// UE_LOG(LogTemp, Log, TEXT("VolumetricSmoke: Rendering %d voxels with material %s"), 
+	// 	SmokeVoxelArray.Num(), *Material->GetName());
 	
 	const float HalfVoxelSize = VoxelSize * 0.5f;
 	

@@ -12,11 +12,12 @@
 
 struct FVoxelVolumeEntry
 {
-	UVoxelizeSpaceComponent* Component;
-	FRDGTextureRef VoxelTexture;
+
+	UTextureRenderTargetVolume* VoxelTexture = nullptr;
 	FIntVector Resolution;
 	FVector3f BoundsMin;
 	FVector3f BoundsMax;
+	FMatrix44f WorldToLocal;
 };
 
 
@@ -42,6 +43,30 @@ public:
 	FVoxelVolumeEntry VolumeEntry;
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+
+
+
+#pragma region debug
+	/** Mesh to apply debug material on */
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="VoxelDebug")
+	//UMeshComponent* TargetMesh;
+
+	/** Base material with a Texture Parameter for voxel volume */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="VoxelDebug")
+	UMaterialInterface* BaseMaterial;
+	
+	UPROPERTY()
+	UMaterialInstanceDynamic* MID;
+
+	/** Parameter name in the material for the volume texture */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="VoxelDebug")
+	FName TextureParameterName = TEXT("VoxelVolumeTex");
+
+	/** Apply a voxel texture to the material */
+	UFUNCTION(BlueprintCallable, Category="VoxelDebug")
+	void ApplyVoxelTexture(UTextureRenderTargetVolume* VoxelTexture);
+#pragma endregion 
 
 		
 };

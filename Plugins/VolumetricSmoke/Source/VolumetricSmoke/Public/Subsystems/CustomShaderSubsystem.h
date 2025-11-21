@@ -22,7 +22,7 @@ class VOLUMETRICSMOKE_API UCustomShaderSubsystem : public UEngineSubsystem
 
 public:
 
-	void AddVoxelizationPass(FRDGBuilder& GraphBuilder, FVoxelVolumeEntry& Entry);
+	void AddVoxelizationPass(FVoxelVolumeEntry& Entry);
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 

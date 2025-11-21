@@ -47,5 +47,5 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 	float density = saturate(1.0 - dist / 50.0); // radius 50 units
 
 	// Write density to voxel grid
-	VoxelGridOut[DispatchThreadID] = density;
+	VoxelGridOut[DispatchThreadID] = 1 / DispatchThreadID.x;
 }
